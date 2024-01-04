@@ -4,4 +4,5 @@ python main.py \
     --seed -1 \
     --data_dir ./data/BIG-bench/bigbench/benchmark_tasks/bbq_lite/resources/ \
     --log_path ./logs/bbq-age.txt \
-    --rule_path ./rules/bbq-age.json
+    --test_data_ratio 1.0 \
+    --rule_path ./rules/bbq-age.json 

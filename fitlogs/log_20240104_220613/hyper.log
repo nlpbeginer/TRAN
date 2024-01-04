@@ -1,0 +1,1 @@
+{"hyper": {"seed": -1, "task": "bbq_Age", "data_dir": "./data/BIG_bench/bigbench/benchmark_tasks/bbq_lite/resources/", "log_path": "./logs/bbq_age.txt", "rule_path": "./rules/bbq_age.json", "num_rule_limit": 100, "num_rule_per_sample": 3, "test_data_ratio": 1.0}}

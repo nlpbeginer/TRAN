@@ -20,6 +20,10 @@ def get_args():
     parser.add_argument("--rule_path", type=str, default="./rules/rule-book.json")
     parser.add_argument("--num_rule_limit", type=int, default=100)
     parser.add_argument("--num_rule_per_sample", type=int, default=3)
+    ### split test dataset for test
+    parser.add_argument("--test_data_ratio", type=float, default=1.0)
+    ### whether have label
+    parser.add_argument("--have_label", type=bool, default=True)
     args = parser.parse_args()
 
     return args
@@ -36,22 +40,50 @@ Please help me classify whether the contents of these two rules are exactly iden
 You are only allowed to give me the answer, selecting from \"identical\" and \"not identical\".\n\n\
 "
 
-def post_message(messages, tokens, logger):
-    # 调用接口
+# 定义一个允许的模型名称列表
+ALLOWED_MODELS = [
+    'gpt-4-32k',
+    'gpt-4',
+    'gpt-35-turbo-16k',
+    'gpt-35-turbo',
+    'text-embedding-ada-002'
+]
+
+def post_message(messages, tokens, logger, max_retries=3):
     stime = 1
+    retries = 0
 
-    response = openai.Completion.create(
-        model="gpt-3.5-turbo-0301",
-        messages=messages,
-        temperature=0,
-        stream=false,
-    )  
+    while retries < max_retries:
+        try:
+            # 尝试调用接口
+            response = openai.ChatCompletion.create(
+                engine="gpt-35-turbo",
+                messages=messages,
+                temperature=0,
+                stream=False,
+            )
 
-    tokens += response['usage']['total_tokens']
-    messages.append({'role': response['choices'][0]['message']['role'], 'content': response['choices'][0]['message']['content']})
-    time.sleep(stime)
+            # 如果成功，更新 tokens 和 messages
+            tokens += response['usage']['total_tokens']
+            messages.append({'role': response['choices'][0]['message']['role'], 'content': response['choices'][0]['message']['content']})
+            # 返回结果
+            return messages, response, tokens
 
-    return messages, response, tokens
+        except openai.error.OpenAIError as e:
+            # 如果是 OpenAI 特定的错误，记录错误并重试
+            logger.error(f"OpenAI Error occurred: {e}")
+            logger.error(f"Retrying after {stime} seconds...")
+            retries += 1
+            time.sleep(stime)
+
+        except Exception as e:
+            # 对于其他类型的错误，记录错误并退出循环
+            logger.error(f"An unexpected error occurred: {e}")
+            break
+
+    # 如果重试次数用完仍然失败，抛出异常或返回错误
+    raise Exception("Failed to post message after several retries.")
+
 
 def reasoning_rules_bbq(messages, tokens, logger, line_data, task=None):
 
@@ -125,6 +157,161 @@ def compare_rules(rule1, rule2, compare_prompt):
     prompt = compare_prompt + '1. ' + rule1 + '\n2. ' + rule2 + '\nAnswer: '
     return prompt
 
+class RuleBook():
+    """
+    Represents a rule book that stores rules and samples for a specific task.
+
+    Attributes:
+        rules (list): A list of rules in the rule book.
+        valid_rules (list): A list of valid rules in the rule book.
+        rule_id (dict): A dictionary mapping rules to their corresponding IDs.
+        rule_input_idx (dict): A dictionary mapping rules to their input indices.
+        rule_use (dict): A dictionary mapping rules to their usage count.
+        rule_keep (dict): A dictionary mapping rules to their keep status.
+        samples (list): A list of samples in the rule book.
+        sample_id (dict): A dictionary mapping samples to their corresponding IDs.
+        valid_samples (list): A list of valid samples in the rule book.
+        sample_line_data (dict): A dictionary mapping samples to their line data.
+        sample_rule (dict): A dictionary mapping samples to the rules associated with them.
+        rule_sample (dict): A dictionary mapping rules to the samples they belong to.
+        task (str): The task associated with the rule book.
+        fail_sample_line_data (dict): A dictionary mapping failed samples to their line data.
+        fail_samples (list): A list of failed samples in the rule book.
+        logger: The logger object used for logging.
+
+    Methods:
+        update_rules: Updates the rule book with new rules and samples.
+        update_samples_rules: Updates the rule book with new samples and rules.
+        retrieval_rules_bm25: Retrieves the top rules based on a query using BM25 algorithm.
+        check_contradictory_identical: Checks for contradictory and identical rules in the rule book.
+        get_sim_samples: Retrieves similar samples based on a given sample.
+        get_summary_rules: Retrieves summary rules based on similar samples.
+        summary_and_update: Summarizes rules and updates the rule book.
+    """
+    
+    def __init__(self, task, logger):
+        """
+        Initializes a new instance of the RuleBook class.
+
+        Args:
+            task (str): The task associated with the rule book.
+            logger: The logger object used for logging.
+        """
+        self.rules = []
+        self.valid_rules = []
+        self.rule_id = {}
+        self.rule_input_idx = {}
+        self.rule_use = {}
+        self.rule_keep = {}
+        self.samples = []
+        self.sample_id = {}
+        self.valid_samples = []
+        self.sample_line_data = {}
+        self.sample_rule = {}
+        self.rule_sample = {}
+        self.task = task
+
+        self.fail_sample_line_data = {}
+        self.fail_samples = []
+
+        self.logger = logger
+    
+    def update_rules(self, sample, line_data, rules, index):
+        """
+        Updates the rule book with new rules and samples.
+
+        Args:
+            sample (str): The sample to be updated.
+            line_data (dict): The line data associated with the sample.
+            rules (list): The new rules to be added.
+            index (int): The input index of the rules.
+
+        Returns:
+            list: A list of rules that already exist in the rule book.
+        """
+        # Implementation goes here
+    
+    def update_samples_rules(self, samples, rules, sample_line_data, sample_rules, index):
+        """
+        Updates the rule book with new samples and rules.
+
+        Args:
+            samples (list): The new samples to be added.
+            rules (list): The new rules to be added.
+            sample_line_data (dict): The line data associated with the samples.
+            sample_rules (dict): The rules associated with each sample.
+            index (int): The input index of the rules.
+        """
+        # Implementation goes here
+    
+    def retrieval_rules_bm25(self, query, line_data, n_sample=10, n_rule=3):
+        """
+        Retrieves the top rules based on a query using the BM25 algorithm.
+
+        Args:
+            query (str): The query to retrieve rules for.
+            line_data (dict): The line data associated with the query.
+            n_sample (int): The number of top samples to retrieve. Default is 10.
+            n_rule (int): The number of top rules to retrieve. Default is 3.
+
+        Returns:
+            list: The top rules based on the query.
+        """
+        # Implementation goes here
+    
+    def check_contradictory_identical(self, new_rules):
+        """
+        Checks for contradictory and identical rules in the rule book.
+
+        Args:
+            new_rules (list): The new rules to be checked.
+
+        Returns:
+            int: The number of tokens used during the check.
+        """
+        # Implementation goes here
+    
+    def get_sim_samples(self, sample, line_data, n_sample=2):
+        """
+        Retrieves similar samples based on a given sample.
+
+        Args:
+            sample (str): The sample to find similar samples for.
+            line_data (dict): The line data associated with the sample.
+            n_sample (int): The number of similar samples to retrieve. Default is 2.
+
+        Returns:
+            list: The similar samples.
+        """
+        # Implementation goes here
+    
+    def get_summary_rules(self, similar_samples, line_data):
+        """
+        Retrieves summary rules based on similar samples.
+
+        Args:
+            similar_samples (list): The similar samples to retrieve summary rules for.
+            line_data (dict): The line data associated with the samples.
+
+        Returns:
+            list: The summary rules.
+            int: The number of tokens used during the retrieval.
+        """
+        # Implementation goes here
+    
+    def summary_and_update(self, sample, line_data, n_sample=2):
+        """
+        Summarizes rules and updates the rule book.
+
+        Args:
+            sample (str): The sample to summarize rules for.
+            line_data (dict): The line data associated with the sample.
+            n_sample (int): The number of similar samples to consider. Default is 2.
+
+        Returns:
+            int: The number of tokens used during the summary and update process.
+        """
+        # Implementation goes here
 class RuleBook():
 
     def __init__(self, task, logger):
@@ -416,7 +603,10 @@ class RuleBook():
                      'rule_sample': self.rule_sample,
                      'fail_samples': self.fail_samples,
                      'fail_sample_line_data': self.fail_sample_line_data}
-        
+        # 确保目录存在
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+
+
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(save_data, f)
 
@@ -498,6 +688,8 @@ class RuleBook():
                 self.sample_rule[sample] = rule_idxs
 
 def set_logger(filepath):
+    with open(filepath, 'a') as _:
+        pass
     global logger
     logger = logging.getLogger('')
     logger.setLevel(logging.INFO)
